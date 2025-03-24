@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mermaid.js Diagram Viewer</title>
+    <script src="/templates/mermaid.min.js"></script>
+    <style>
+        .button {
+            margin-right: 10px; /* 버튼들 사이의 간격 설정 */
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f7fc;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: row;
+            height: 100vh;
+        }
+
+        h2 {
+            color: #2d3e50;
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+        }
+
+        .left-panel {
+            width: 33%;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: flex-start;
+            background-color: #f4f7fc;
+            overflow-y: auto;
+            max-height: 100%;
+        }
+
+        .right-panel {
+            width: 67%;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #fff;
+            overflow: hidden;
+            position: relative;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 10px;
+            font-size: 1rem;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            box-sizing: border-box;
+            resize: vertical;
+            min-height: 150px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #mermaidDiagram {
+            width: 100%;
+            height: 80vh;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+            overflow: auto;
+            position: relative;
+        }
+
+        #pngDownloadButton, #copyMermaidButton {
+            position: absolute;
+            top: 10px;
+            background-color: #007bff;
+            border: none;
+            color: white;
+            font-size: 1rem;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: block;
+        }
+
+        #pngDownloadButton {
+            right: 10px;
+        }
+        #copyMermaidButton {
+            margin-right: 70px;
+        }
+
+        #copyMermaidButton {
+            right: 100px; /* PNG 다운로드 버튼의 왼쪽에 위치 */
+        }
+
+        #loading {
+            display: none; /* 기본적으로 숨기기 */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            color: #333;
+            z-index: 10;
+        }
+
+        .loader {
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .question-list {
+            width: 100%;
+            padding: 10px 0;
+            list-style-type: none;
+            margin: 0;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .question-item {
+            background-color: #f1f1f1;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            width: 100%;
+        }
+
+        .question-time {
+            font-size: 0.8rem;
+            color: #777;
+        }
+
+    </style>
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+    mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'strict'
+    });
+
+    const questionList = document.getElementById("questionList");
+    const maxQuestions = 10;
+    let mermaidData = ''; // 새로운 변수 추가
+
+    async function fetchDiagram() {
+        const question = document.getElementById("question").value;
+        if (!question) {
+            alert("질문을 입력해주세요.");
+            return;
+        }
+
+        // 현재 시간 얻기
+        const currentTime = new Date().toLocaleString();
+
+        // 질문 리스트에 추가
+        const questionItem = document.createElement("li");
+        questionItem.classList.add("question-item");
+        questionItem.innerHTML = `${question} <div class="question-time">${currentTime}</div>`;
+
+        // 기존 질문 10개 초과 시 첫 번째 질문 삭제
+        if (questionList.children.length >= maxQuestions) {
+            questionList.removeChild(questionList.lastElementChild);
+        }
+
+        // 새 질문을 맨 위에 추가
+        questionList.prepend(questionItem);
+
+        // 로딩 아이콘 표시
+        const loadingElement = document.getElementById("loading");
+        loadingElement.style.display = "block"; // 로딩바 보이기
+        // document.getElementById("pngDownloadButton").style.display = "none"; // 로딩 중에는 버튼 숨기기
+        // document.getElementById("copyMermaidButton").style.display = "none"; // 로딩 중에는 버튼 숨기기
+
+        try {
+            // Flask API에 요청
+            const response = await fetch('/diagram?question=' + encodeURIComponent(question));
+            const data = await response.json();
+
+            if (data.success) {
+                mermaidData = data.mermaid; // mermaidData에 값 저장
+
+                const mermaidElement = document.getElementById("mermaidDiagram");
+                // 기존 내용을 삭제 후 다시 생성
+                mermaidElement.innerHTML = "";
+                const newDiagram = document.createElement("pre");
+                newDiagram.classList.add("mermaid");
+                newDiagram.textContent = mermaidData; // mermaidData 사용
+                mermaidElement.appendChild(newDiagram);
+
+                // Mermaid 다이어그램을 다시 렌더링
+                mermaid.init(undefined, newDiagram);
+
+
+            } else {
+                alert("오류: " + data.error);
+            }
+            // 로딩 아이콘 숨기기
+            loadingElement.style.display = "none"; // 로딩바 숨기기
+            // document.getElementById("pngDownloadButton").style.display = "block"; // 다이어그램이 완성된 후 버튼 보이기
+            // document.getElementById("copyMermaidButton").style.display = "block"; // 다이어그램이 완성된 후 버튼 보이기
+        } catch (error) {
+            // 로딩 아이콘 숨기기
+            loadingElement.style.display = "none"; // 로딩바 숨기기
+            alert("네트워크 오류: " + error.message);
+        }
+    }
+
+    document.getElementById("generateButton").addEventListener("click", fetchDiagram);
+
+    // 엔터키를 눌렀을 때도 다이어그램 생성
+    document.getElementById("question").addEventListener("keydown", function(event) {
+        if (event.key === "Enter") {
+            fetchDiagram();
+        }
+    });
+
+    // PNG 다운로드 버튼 클릭 시
+    document.getElementById("pngDownloadButton").addEventListener("click", function() {
+        const mermaidElement = document.getElementById("mermaidDiagram");
+        const svg = mermaidElement.querySelector('svg');
+        if (!svg) {
+            alert('다이어그램이 생성되지 않았습니다.');
+            return;
+        }
+
+        const questionText = document.getElementById("question").value || 'mermaid-diagram'; // 파일명 기본값 설정
+        const svgData = new XMLSerializer().serializeToString(svg);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+
+        img.onload = function() {
+            // 화면 크기에 맞게 캔버스 크기 조정
+            canvas.width = img.width*20;
+            canvas.height = img.height*20;
+            ctx.drawImage(img, 0, 0);
+
+            const pngData = canvas.toDataURL('image/png');
+
+            // 다운로드
+            const link = document.createElement('a');
+            link.href = pngData;
+            link.download = `${questionText}.png`; // 질문 텍스트를 파일명으로 사용
+            link.click();
+        };
+
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
+    });
+
+    // Mermaid 구문 복사 버튼 클릭 시
+    document.getElementById("copyMermaidButton").addEventListener("click", function() {
+        if (mermaidData) {
+            // mermaidData를 클립보드에 복사
+            navigator.clipboard.writeText(mermaidData).then(function() {
+                alert("클립보드에 복사되었습니다.");
+            }).catch(function(err) {
+                alert("복사에 실패했습니다: " + err);
+            });
+        } else {
+            alert('Mermaid 구문이 없습니다.');
+        }
+    });
+});
+
+</script>
+
+</head>
+<body>
+    <div class="left-panel">
+        <h2>다이어그램 생성기</h2>
+        <textarea id="question" placeholder="질문을 입력하세요"></textarea>
+        <button id="generateButton">다이어그램 생성</button>
+
+        <ul id="questionList" class="question-list"></ul>
+
+        <!-- 로딩 아이콘 -->
+        <div id="loading">
+            <div class="loader"></div>
+            로딩 중...
+        </div>
+    </div>
+
+    <div class="right-panel">
+        <!-- Mermaid 다이어그램을 렌더링할 공간 -->
+        <button id="pngDownloadButton" class="button">PNG 다운로드</button>
+        <button id="copyMermaidButton" class="button">Mermaid 복사</button>
+        <div id="mermaidDiagram">
+            <pre class="mermaid"></pre>
+        </div>
+    </div>
+</body>
+</html>

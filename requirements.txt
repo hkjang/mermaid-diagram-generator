@@ -1,0 +1,12 @@
+flask
+#sqlalchemy
+#pymysql
+#psycopg2
+# sqlite3
+langchain
+langchain-openai
+langchain-community
+langchain-ollama
+#psutil
+flask-cors
+dotenv
